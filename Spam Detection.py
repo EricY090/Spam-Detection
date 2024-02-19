@@ -125,7 +125,6 @@ def evaluate(x, y, w, b):
 
 
 if __name__ == "__main__":
-    ### ---------------------------------------------- Part A ---------------------------------------------- ###
     # -----Data Preprocessing----- #
     ### Read the SMSSpamCollection file
     df = pd.read_csv("SMSSpamCollection", sep='\t', header=None)
