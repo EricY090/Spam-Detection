@@ -1,0 +1,26 @@
+<!-- templates/index.html -->
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8"><title>Spam Detection</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename = 'style.css') }}">
+</head><body>
+  <div class="container">
+    <h1>Spam Mail Detection</h1>
+    <textarea id="email-input" rows="8" placeholder="Paste the text message content …"></textarea>
+    <button id="predict-btn">Analyze</button>
+    <div id="result"></div>
+  </div>
+  <script>
+    document.getElementById("predict-btn").onclick = async () => {
+      const text = document.getElementById("email-input").value.trim();
+      if (!text) return alert("Enter the content of the message to analyze");
+      const res = await fetch("/predict", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({text})
+      });
+      const data = await res.json();
+      document.getElementById("result").innerHTML =
+        `<strong>Outcome：</strong>${data.label} （Confidence ${(data.confidence*100).toFixed(1)}%）`;
+    };
+  </script>
+</body></html>

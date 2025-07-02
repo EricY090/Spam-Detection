@@ -1,58 +1,11 @@
 import pandas as pd
 import numpy as np
 from sklearn.utils import shuffle
-import re
-import string
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer
-import math
-from sklearn.metrics import f1_score, recall_score, precision_score, accuracy_score
-from sklearn.model_selection import KFold
 from matplotlib import pyplot as plt 
-
-stopwords = stopwords.words('english')
-ps = PorterStemmer()
-
-### Preprocessing the text
-def text_preprocess(s):
-    temp = re.sub(r'\d+', "", s)        ### Remove numbers
-    temp = re.sub(r"http\S+", "", temp)     ### Remove urls
-    temp = "".join([char.lower() for char in temp if char not in string.punctuation])       ### Lower case and remove punctuations
-    temp = nltk.word_tokenize(temp)     ### Tokenize
-    temp = np.array([ps.stem(x) for x in temp if x not in stopwords])     ### Remove stopwords then word stemming the rest
-    return temp
+import pickle
+from utils import text_preprocess, calculate_tf, build_tf_idf, expit
 
 
-### calculate tf
-def calculate_tf(x):
-    tf = []
-    for idx, i in enumerate(x):
-        temp = dict()
-        for word in i:
-            temp[word] = temp[word] +1 if word in temp else 1
-        temp[0] = len(i)
-        tf.append(temp)
-    return tf
-
-### TF-IDF: handles the unseen word by ignoring
-def build_tf_idf(tf, vocab, vocab_id, total_docs):
-    result = np.zeros(shape=(len(tf), len(vocab_id)), dtype = np.float32)
-    for idx, i in enumerate(tf):
-        length = i[0]
-        for word, freq in i.items():
-            if word == 0: continue
-            ### Unseen word
-            if word not in vocab_id:
-                #print(f"Data {idx} has a word {word} that is unseen in training set")
-                continue
-            id = vocab_id[word]                 ### Id for the word
-            result[idx][id] = (freq/length) * math.log2(total_docs/vocab[word])        ### tf-idf
-    return result
-
-### Sigmoid function
-def expit(x):
-    return 1/(1+np.exp(-x))
 
 
 ### Gradient of the loss function in logistic regression respect to w in matrix form: (1/n)(sigmoid(x*w^T)-y)^T *x + 2*alpha*w
@@ -69,6 +22,7 @@ def evaluate_gradient_w(x, y, b, w, method, penalty):
         grad = (s-y)*x
         grad = grad + 2*penalty*w
     return grad
+
 
 ### Gradient of the loss function in logistic regression respect to w in matrix form: (1/n)(sigmoid(x*w^T)-y)^T 
 def evaluate_gradient_b(x, y, b, w, method):
@@ -110,24 +64,12 @@ def GD_MiniGD_SGD(w, b, lr, x, y, epochs, batch_size, method, valid_x, valid_y, 
     return cost_hist, w, b
 
 
-def evaluate(x, y, w, b):
-    y_predict = expit(np.array(np.dot(x, w.T) + b, dtype=np.float32))
-    for idx, i in enumerate(y_predict):
-        y_predict[idx] = 1 if y_predict[idx] > 0.5 else 0
-    y_predict = np.array(y_predict, dtype= int)
-
-    f1 = f1_score(y, y_predict)
-    precision = precision_score(y, y_predict)
-    recall = recall_score(y, y_predict)
-    accuracy = accuracy_score(y, y_predict)
-    return f1, precision, recall, accuracy
-
 
 
 if __name__ == "__main__":
     # -----Data Preprocessing----- #
     ### Read the SMSSpamCollection file
-    df = pd.read_csv("SMSSpamCollection", sep='\t', header=None)
+    df = pd.read_csv("sms_sample_text", sep='\t', header=None)
     data = np.array(df)
 
     ### Remove punctuation, urls, and numbers. Change text to lower case. Tokenized, word stemming and remove stopwords.
@@ -215,71 +157,25 @@ if __name__ == "__main__":
     valid_loss, w, b = GD_MiniGD_SGD(w, b, lr, train_x, train_y, epoch, batch_size, method, valid_x, valid_y, penalty)  # Method = 1: SGD; Method = 0: GD/MiniGD
     print(f"Train with learning rate= {lr}, lambda hyperparameter for L2 regularization= {penalty}, and epoch = {epoch}.")
     ### Plot validation loss after each epoch
-    plt.plot(valid_loss)
-    plt.show()
+    # plt.plot(valid_loss)
+    # plt.show()
 
+    # Save the model and artifacts
+    print("Saving the model and artifacts...")
+    with open("artifacts/w.pkl", "wb") as f:
+        pickle.dump(w, f)
+    with open("artifacts/b.pkl", "wb") as f:
+        pickle.dump(b, f)
+    with open("artifacts/vocab_id.pkl", "wb") as f:
+        pickle.dump(vocab_id, f)
+    with open("artifacts/vocab.pkl", "wb") as f:
+        pickle.dump(vocab, f)
+    with open("artifacts/total_docs.pkl", "wb") as f:
+        pickle.dump(total_docs, f)
+    print("Model and artifacts saved.")
 
-    ### ----- Evaluation on test ----- ###
-    print("Evaluating the test set under the this training setting...")
-    test_y = np.array(test_y, dtype = int)
-    f1, recall, precision, accuracy = evaluate(test_x, test_y, w, b)
-    print(f"f1: {f1}, precision: {precision}, recall: {recall}, accuracy: {accuracy}")
-
-
-    ### ----- Try K fold cross validation to choose lambda = 1e-4, 1e-6, or 1e-8 in SGD ----- ###
-    f1_fold = [0]*3       ### save the f1 scores
-
-    ### K fold (n = 3)
-    kf = KFold(n_splits=3)
-    data_x = np.concatenate((train_x, valid_x), axis = 0)
-    data_y = np.concatenate((train_y, valid_y), axis = 0)
-    print(data_x.shape)
-    print(data_y.shape)
-    temp = dict()
-    for i, (train_index, valid_index) in enumerate(kf.split(data_x)): ### iterate every fold of the k spilts
-        X_train = data_x[train_index]                ### Traing data for X and y
-        y_train = data_y[train_index]
-        X_valid = data_x[valid_index]                ### validation data for X and y
-        y_valid = data_y[valid_index]
-        w = np.zeros(shape=(1, X_train.shape[1]), dtype = np.float32)
-        b = 1
-        _, w0, b0 = GD_MiniGD_SGD(w, b, 0.02, X_train, y_train, 100, 32, 1, X_valid, y_valid, 0.0001)
-        _, w1, b1 = GD_MiniGD_SGD(w, b, 0.02, X_train, y_train, 100, 32, 1, X_valid, y_valid, 0.000001)
-        _, w2, b2 = GD_MiniGD_SGD(w, b, 0.02, X_train, y_train, 100, 32, 1, X_valid, y_valid, 0.00000001)
-        print(f"Fold {i}:")
-    
-        ### Prediction
-        f1_0, precision_0, recall_0, accuracy_0 = evaluate(X_valid, y_valid, w0, b0)
-        f1_1, precision_1, recall_1, accuracy_1 = evaluate(X_valid, y_valid, w1, b1)
-        f1_2, precision_2, recall_2, accuracy_2 = evaluate(X_valid, y_valid, w2, b2)
-        print(f"For alpha = 1e-4, f1: {f1_0}, precision: {precision_0}, recall: {recall_0}, accuracy: {accuracy_0}")
-        print(f"For alpha = 1e-6, f1: {f1_1}, precision: {precision_1}, recall: {recall_1}, accuracy: {accuracy_1}")
-        print(f"For alpha = 1e-8, f1: {f1_2}, precision: {precision_2}, recall: {recall_2}, accuracy: {accuracy_2}")
-        f1_fold[0] +=f1_0
-        f1_fold[1] +=f1_1
-        f1_fold[2] +=f1_2
-        print(f1_fold)
 
     
-    ### Choose the best lambda by analyzing (averaging) the f1 scores
-    f1_fold = [x/3 for x in f1_fold]
-    choice = f1_fold.index(max(f1_fold))
-    if choice ==0:
-        penalty = 0.0001
-        print(f"lambda = 1e-4 has better performance from K fold")
-    elif choice ==1:
-        penalty = 0.000001
-        print(f"lambda = 1e-6 has better performance from K fold")
-    else:
-        penalty = 0.00000001
-        print(f"lambda = 1e-8 has better performance from K fold")
-    
-    ### Train with best lambda and report the performance
-    w = np.zeros(shape=(1, train_x.shape[1]), dtype = np.float32)
-    b = 1
-    _, w, b = GD_MiniGD_SGD(w, b, 0.02, train_x, train_y, 100, 32, 1, valid_x, valid_y, penalty)
-    f1, recall, precision, accuracy = evaluate(test_x, test_y, w, b)
-    print(f"f1: {f1}, precision: {precision}, recall: {recall}, accuracy: {accuracy}")
 
     
 
