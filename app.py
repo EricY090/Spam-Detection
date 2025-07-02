@@ -27,7 +27,7 @@ def predict():
     x = build_tf_idf(tf, vocab, vocab_id, total_docs)  # shape (1, D)
     y_hat = expit(np.dot(x, w.T) + b)[0]
     label = "Spam!" if y_hat > 0.5 else "Looks Good!"
-    confidence = y_hat if label == "spam" else 1 - y_hat
+    confidence = max(y_hat, 1 - y_hat)
     return jsonify({"label": label, "confidence": float(confidence)})
 
 if __name__ == "__main__":
