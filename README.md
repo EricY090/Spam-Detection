@@ -1,4 +1,4 @@
-# Binary-Text-Classification--Spam-Ham
+# Spam Message Detection
 Implement Spam detection with TF-IDF using Logistic Regression
 
 
